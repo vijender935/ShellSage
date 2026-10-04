@@ -4,6 +4,10 @@ Path sandbox – every file operation must go through safe_path().
 Supports multiple allowed roots:
   - Primary WORKSPACE (for relative paths + shell cwd)
   - Extra roots from AGENT_EXTRA_ROOTS (e.g. /sdcard/Download)
+
+`.git` internals are protected: file tools cannot read or write inside a .git
+folder (a writable .git/config or hooks dir would allow code execution through
+git). Git is used only via the dedicated git tools / allowlisted `git` command.
 """
 
 from __future__ import annotations
@@ -11,6 +15,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from config.settings import ALLOWED_ROOTS, WORKSPACE
+
+PROTECTED_COMPONENTS = frozenset({".git"})
 
 
 class PathEscapeError(Exception):
@@ -34,6 +40,7 @@ def safe_path(path: str | Path | None = ".") -> Path:
 
     - Relative paths are resolved against the primary WORKSPACE.
     - Absolute paths are accepted only if they fall under an allowed root.
+    - Paths inside a `.git` directory are refused.
     - Raises PathEscapeError on any attempt to escape.
     """
     if path is None or str(path).strip() == "":
@@ -54,6 +61,12 @@ def safe_path(path: str | Path | None = ".") -> Path:
         raise PathEscapeError(
             f"Access denied: '{path}' is outside the allowed roots ({roots_str})"
         )
+
+    for part in target.relative_to(matched_root).parts:
+        if part.lower() in PROTECTED_COMPONENTS:
+            raise PathEscapeError(
+                f"Access denied: '{path}' is inside protected git internals (.git)"
+            )
 
     return target
 
