@@ -14,6 +14,7 @@ from core.safety import is_risky_command
 from core.tools import execute_tool
 from security.audit import log_tool_call
 from security.confirmation import ask_confirmation
+from agent.verify import VerifyTracker
 from agent.providers.grok import (
     ask_grok,
     extract_message,
@@ -33,6 +34,13 @@ def _print_banner() -> None:
 
 
 def _pretty_result(result: dict[str, Any]) -> None:
+    if "summary" in result and "counts" in result:  # run_tests
+        icon = "✅" if result.get("success") else "❌"
+        print(f"      {icon} tests: {result['summary']}")
+        for failed in result.get("failed_tests", [])[:10]:
+            print(f"         - {failed}")
+        return
+
     if result.get("success"):
         if "items" in result:
             print(f"      📁 {result.get('path', '.')} ({result.get('count', 0)} items)")
@@ -59,6 +67,7 @@ def _pretty_result(result: dict[str, Any]) -> None:
 def run_agent() -> None:
     _print_banner()
     history: list[dict[str, Any]] = []
+    verify = VerifyTracker.from_env()
 
     while True:
         try:
@@ -80,6 +89,7 @@ def run_agent() -> None:
             continue
 
         history.append({"role": "user", "content": user_input})
+        verify.new_turn()
 
         for step in range(1, MAX_STEPS + 1):
             response = ask_grok(history)
@@ -102,6 +112,13 @@ def run_agent() -> None:
             tool_calls = extract_tool_calls(message)
 
             if not tool_calls:
+                # Edit -> test -> fix: do not accept "done" while changes are unverified.
+                nudge = verify.pending_message()
+                if nudge:
+                    print("\n🔎 Verifying before finishing…")
+                    history.append({"role": "user", "content": nudge})
+                    continue
+
                 text = extract_text(message)
                 if text:
                     print(f"\nAgent: {text}\n")
@@ -148,6 +165,7 @@ def run_agent() -> None:
                         duration_ms=round((time.perf_counter() - t0) * 1000, 1),
                     )
 
+                verify.observe(name, result)
                 _pretty_result(result)
 
                 history.append({
