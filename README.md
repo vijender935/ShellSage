@@ -17,6 +17,7 @@ Agent/
 │       ├── filesystem.py
 │       ├── shell.py
 │       ├── git.py        # Read-only git tools
+│       ├── verify.py     # run_tests (structured pytest results)
 │       └── __init__.py   # Tool registry
 ├── mcp_local/
 │   ├── server.py         # Streamable HTTP MCP server
@@ -25,10 +26,12 @@ Agent/
 │   ├── confirmation.py   # Local-agent confirmation
 │   └── audit.py          # JSONL audit logging
 ├── agent/                # Optional local Grok agent
+│   ├── loop.py
+│   └── verify.py         # Edit -> test -> fix nudges
 ├── config/
 │   ├── settings.py
 │   └── shell_policy.py   # Allowlist settings
-├── tests/                # pytest suite (sandbox, auth, shell policy, git)
+├── tests/                # pytest suite (sandbox, auth, shell policy, git, verify)
 ├── run_mcp_server.py
 └── requirements.txt
 ```
@@ -82,6 +85,7 @@ Requests without a valid token get `401`. Access logging is disabled so the `?to
 | `git_log` | Recent commits | on |
 | `delete_path` | Delete a file/folder recursively | **off** — set `ENABLE_DELETE=1` |
 | `run_command` | Run ONE allowlisted command in the workspace | **off** — set `ENABLE_SHELL=1` |
+| `run_tests` | Run pytest, return pass/fail + failing tests | **off** — set `ENABLE_SHELL=1` |
 | `agent_status` | Return service status | on |
 
 Clipboard/Android/Termux integrations have been removed from the cloud version.
@@ -96,12 +100,18 @@ Clipboard/Android/Termux integrations have been removed from the cloud version.
 - Path-like arguments must stay inside the workspace (no `/etc/passwd`, `../x`, `~`, symlink escapes).
 - Secrets (anything with `TOKEN`, `SECRET`, `API_KEY`, `PASSWORD`… in its name) are removed from the child process environment.
 
-**Important:** `python` and `pytest` can execute arbitrary code. Remove them from `SHELL_ALLOWLIST` if you do not want that. `SHELL_UNRESTRICTED=1` restores the old `shell=True` behaviour (not recommended).
+**Important:** `python` and `pytest` can execute arbitrary code. Remove them from `SHELL_ALLOWLIST` if you do not want that (`run_tests` then stops working). `SHELL_UNRESTRICTED=1` restores the old `shell=True` behaviour (not recommended).
+
+## Verification loop (edit → test → fix)
+
+- `run_tests` runs `pytest -q --tb=short` (override with `TEST_COMMAND`) through the same shell policy and returns a compact result: `success`, `summary`, `counts`, `failed_tests`, `output_tail`. Exit code 5 (no tests collected) is reported as `no_tests`.
+- **MCP clients** (Claude, Grok, …) get the tools plus an instruction to verify with `run_tests` + `git_diff` before reporting success.
+- **Local agent:** `agent/verify.py` tracks tool calls per user message. If the model tries to finish after changing files without running tests, or after a failing test run, the loop sends it a "verify first" message instead of accepting the answer. Capped by `VERIFY_MAX_NUDGES` (default 2); disable with `AUTO_VERIFY=0`. If the project has no tests or the runner is blocked, the agent is not nagged.
 
 ## Security model
 
 - **Authentication:** Bearer token required in HTTP mode.
-- **Least privilege:** shell and delete tools are not exposed unless explicitly enabled.
+- **Least privilege:** shell, test-runner and delete tools are not exposed unless explicitly enabled.
 - **Path sandbox:** every file operation goes through `safe_path()`, which resolves symlinks, blocks `..` / absolute-path escapes, and refuses anything inside `.git` (a writable `.git/config` or hooks dir would allow code execution through git).
 - **Audit log:** JSONL audit logging remains enabled by default.
 
