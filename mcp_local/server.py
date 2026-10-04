@@ -5,8 +5,8 @@ Provides a streamable HTTP MCP endpoint suitable for Render and remote MCP clien
 Security defaults:
   - HTTP mode REQUIRES AGENT_API_TOKEN (Bearer header or ?token= query).
     Set ALLOW_UNAUTHENTICATED=1 to explicitly opt out (not recommended).
-  - `run_command` is only exposed when ENABLE_SHELL=1, and even then it is
-    restricted by the allowlist policy (see core/safety.py).
+  - `run_command` and `run_tests` are only exposed when ENABLE_SHELL=1 (both can
+    execute code), and are restricted by the allowlist policy (core/safety.py).
   - `delete_path` is only exposed when ENABLE_DELETE=1.
   - git_status / git_diff / git_log are read-only and always available.
 """
@@ -45,6 +45,8 @@ ENABLE_SHELL = _flag("ENABLE_SHELL")
 ENABLE_DELETE = _flag("ENABLE_DELETE")
 _AUTH_STATE = "n/a (stdio)"
 
+_SHELL_TOOLS = frozenset({"run_command", "run_tests"})
+
 mcp = FastMCP(
     "Agent",
     instructions=(
@@ -52,6 +54,7 @@ mcp = FastMCP(
         f"File operations are restricted to the workspace: {WORKSPACE}. "
         "Shell and delete tools are only available if the operator enabled them. "
         "run_command takes ONE simple allowlisted command (no pipes, &&, ;, redirects). "
+        "After changing code, verify with run_tests and git_diff before reporting success. "
         "Use destructive operations carefully."
     ),
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
@@ -118,6 +121,11 @@ def run_command(command: str, timeout: int = 30) -> dict[str, Any]:
     """Run ONE simple allowlisted command in the agent workspace (no pipes, &&, ;, redirects)."""
     return _run("run_command", {"command": command, "timeout": timeout})
 
+@_tool_if(ENABLE_SHELL)
+def run_tests(path: str = "", keyword: str = "", fail_fast: bool = False) -> dict[str, Any]:
+    """Run the project's tests (pytest) in the workspace. Returns pass/fail, counts and failing tests."""
+    return _run("run_tests", {"path": path, "keyword": keyword, "fail_fast": fail_fast})
+
 @mcp.tool()
 def git_status() -> dict[str, Any]:
     """Show git status (short format, with branch) of the workspace repo."""
@@ -138,7 +146,7 @@ def agent_status() -> str:
     """Return basic agent status and workspace information."""
     exposed = [
         n for n in tool_names()
-        if not (n == "run_command" and not ENABLE_SHELL)
+        if not (n in _SHELL_TOOLS and not ENABLE_SHELL)
         and not (n == "delete_path" and not ENABLE_DELETE)
     ]
     return (
