@@ -5,8 +5,10 @@ Provides a streamable HTTP MCP endpoint suitable for Render and remote MCP clien
 Security defaults:
   - HTTP mode REQUIRES AGENT_API_TOKEN (Bearer header or ?token= query).
     Set ALLOW_UNAUTHENTICATED=1 to explicitly opt out (not recommended).
-  - `run_command` is only exposed when ENABLE_SHELL=1.
+  - `run_command` is only exposed when ENABLE_SHELL=1, and even then it is
+    restricted by the allowlist policy (see core/safety.py).
   - `delete_path` is only exposed when ENABLE_DELETE=1.
+  - git_status / git_diff / git_log are read-only and always available.
 """
 from __future__ import annotations
 
@@ -49,6 +51,7 @@ mcp = FastMCP(
         "You are connected to a cloud-hosted agent. "
         f"File operations are restricted to the workspace: {WORKSPACE}. "
         "Shell and delete tools are only available if the operator enabled them. "
+        "run_command takes ONE simple allowlisted command (no pipes, &&, ;, redirects). "
         "Use destructive operations carefully."
     ),
     transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
@@ -112,8 +115,23 @@ def delete_path(path: str) -> dict[str, Any]:
 
 @_tool_if(ENABLE_SHELL)
 def run_command(command: str, timeout: int = 30) -> dict[str, Any]:
-    """Run a shell command in the agent workspace."""
+    """Run ONE simple allowlisted command in the agent workspace (no pipes, &&, ;, redirects)."""
     return _run("run_command", {"command": command, "timeout": timeout})
+
+@mcp.tool()
+def git_status() -> dict[str, Any]:
+    """Show git status (short format, with branch) of the workspace repo."""
+    return _run("git_status", {})
+
+@mcp.tool()
+def git_diff(path: str = "", staged: bool = False) -> dict[str, Any]:
+    """Show git diff of the workspace repo (optionally one path, or staged changes)."""
+    return _run("git_diff", {"path": path, "staged": staged})
+
+@mcp.tool()
+def git_log(count: int = 10) -> dict[str, Any]:
+    """Show recent commits (one per line, max 100)."""
+    return _run("git_log", {"count": count})
 
 @mcp.tool()
 def agent_status() -> str:
