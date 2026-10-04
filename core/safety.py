@@ -74,7 +74,7 @@ def _deny(reason: str) -> CommandDecision:
 
 
 def _escapes_workspace(arg: str) -> bool:
-    '''True if *arg* looks like a path that leaves the allowed roots.'''
+    '''True if *arg* looks like a path that leaves the allowed roots (or hits .git).'''
     value = arg
     if arg.startswith("--") and "=" in arg:
         value = arg.split("=", 1)[1]
@@ -86,7 +86,11 @@ def _escapes_workspace(arg: str) -> bool:
         return True
 
     p = Path(value)
-    suspicious = p.is_absolute() or ".." in p.parts
+    suspicious = (
+        p.is_absolute()
+        or ".." in p.parts
+        or any(part.lower() in _ws.PROTECTED_COMPONENTS for part in p.parts)
+    )
     if not suspicious:
         candidate = _ws.WORKSPACE / p
         try:
