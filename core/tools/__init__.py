@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from core.tools import filesystem, git, shell
+from core.tools import filesystem, git, shell, verify
 
 TOOL_MAP: dict[str, Callable[..., dict[str, Any]]] = {
     "list_files": filesystem.list_files,
@@ -18,6 +18,7 @@ TOOL_MAP: dict[str, Callable[..., dict[str, Any]]] = {
     "move_file": filesystem.move_file,
     "delete_path": filesystem.delete_path,
     "run_command": shell.run_command,
+    "run_tests": verify.run_tests,
     "git_status": git.git_status,
     "git_diff": git.git_diff,
     "git_log": git.git_log,
@@ -164,6 +165,34 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     },
                 },
                 "required": ["command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_tests",
+            "description": (
+                "Run the project's test suite (pytest) in the workspace. Returns pass/fail, "
+                "counts, the failing test ids and the tail of the output. Call this after "
+                "changing code to verify it."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Test file or folder (optional, default: whole suite)",
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "Only run tests matching this expression (pytest -k)",
+                    },
+                    "fail_fast": {
+                        "type": "boolean",
+                        "description": "Stop at the first failure",
+                    },
+                },
             },
         },
     },
