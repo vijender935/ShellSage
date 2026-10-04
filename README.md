@@ -11,11 +11,12 @@ Grok → Render → MCP server → sandboxed workspace / shell
 ```
 Agent/
 ├── core/
-│   ├── workspace.py      # Path sandbox
-│   ├── safety.py         # Risky command detection
+│   ├── workspace.py      # Path sandbox (+ .git protection)
+│   ├── safety.py         # Shell command policy (allowlist)
 │   └── tools/
 │       ├── filesystem.py
 │       ├── shell.py
+│       ├── git.py        # Read-only git tools
 │       └── __init__.py   # Tool registry
 ├── mcp_local/
 │   ├── server.py         # Streamable HTTP MCP server
@@ -24,8 +25,10 @@ Agent/
 │   ├── confirmation.py   # Local-agent confirmation
 │   └── audit.py          # JSONL audit logging
 ├── agent/                # Optional local Grok agent
-├── config/settings.py
-├── tests/                # pytest suite (workspace sandbox + auth)
+├── config/
+│   ├── settings.py
+│   └── shell_policy.py   # Allowlist settings
+├── tests/                # pytest suite (sandbox, auth, shell policy, git)
 ├── run_mcp_server.py
 └── requirements.txt
 ```
@@ -74,20 +77,33 @@ Requests without a valid token get `401`. Access logging is disabled so the `?to
 | `write_file` | Update a text file | on |
 | `copy_file` | Copy a file | on |
 | `move_file` | Move/rename a file or folder | on |
+| `git_status` | Short git status | on |
+| `git_diff` | Git diff (working tree / staged, optional path) | on |
+| `git_log` | Recent commits | on |
 | `delete_path` | Delete a file/folder recursively | **off** — set `ENABLE_DELETE=1` |
-| `run_command` | Run a shell command in the workspace | **off** — set `ENABLE_SHELL=1` |
+| `run_command` | Run ONE allowlisted command in the workspace | **off** — set `ENABLE_SHELL=1` |
 | `agent_status` | Return service status | on |
 
 Clipboard/Android/Termux integrations have been removed from the cloud version.
 
+## Shell policy
+
+`run_command` does **not** use a shell. The command is split with `shlex` and run with `shell=False`, so `;`, `&&`, `||`, `|`, redirects, `$(...)` and backticks are rejected (and could never be interpreted anyway).
+
+- Only commands in `SHELL_ALLOWLIST` run (default: `ls cat head tail wc grep find pwd echo diff git pytest python python3`). Absolute/relative paths to binaries (`/bin/rm`, `./x`) are rejected.
+- Dangerous arguments are denied: `find -exec/-delete`, `python -c`, `git --hard/--force/-f/-D`, etc.
+- `git` is limited to `GIT_ALLOWED_SUBCOMMANDS` (no `push`, `reset`, `clean`, `config`, `clone`, `remote`), global options are refused, and hooks/fsmonitor are disabled.
+- Path-like arguments must stay inside the workspace (no `/etc/passwd`, `../x`, `~`, symlink escapes).
+- Secrets (anything with `TOKEN`, `SECRET`, `API_KEY`, `PASSWORD`… in its name) are removed from the child process environment.
+
+**Important:** `python` and `pytest` can execute arbitrary code. Remove them from `SHELL_ALLOWLIST` if you do not want that. `SHELL_UNRESTRICTED=1` restores the old `shell=True` behaviour (not recommended).
+
 ## Security model
 
-- **Authentication:** Bearer token required in HTTP mode (see above).
+- **Authentication:** Bearer token required in HTTP mode.
 - **Least privilege:** shell and delete tools are not exposed unless explicitly enabled.
-- **Path sandbox:** every file operation goes through `safe_path()`, which resolves symlinks and blocks `..` / absolute-path escapes (covered by tests).
+- **Path sandbox:** every file operation goes through `safe_path()`, which resolves symlinks, blocks `..` / absolute-path escapes, and refuses anything inside `.git` (a writable `.git/config` or hooks dir would allow code execution through git).
 - **Audit log:** JSONL audit logging remains enabled by default.
-
-**Note:** the risky-command detector in `core/safety.py` is a heuristic, not a security boundary. If you enable `ENABLE_SHELL=1`, treat anyone holding the token as having shell access to the container, and keep the workspace free of secrets.
 
 ## Workspace
 
@@ -103,7 +119,7 @@ Additional allowed roots can be supplied through `AGENT_EXTRA_ROOTS` using the p
 
 ## Optional local Grok agent
 
-The `agent/` package remains available for running the xAI/Grok multi-step loop separately. The Render MCP service itself does not require an xAI API key.
+The `agent/` package remains available for running the xAI/Grok multi-step loop separately. The Render MCP service itself does not require an xAI API key. Note: the local agent uses the same shell policy; set `SHELL_UNRESTRICTED=1` if you need pipes/redirects there.
 
 ## Local development
 
