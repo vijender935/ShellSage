@@ -47,7 +47,7 @@ class Database:
     def create_approval(self,approval_id,task_id,tool,args):self._conn().execute("INSERT INTO approvals(id,task_id,tool,arguments_json) VALUES(?,?,?,?)",(approval_id,task_id,tool,json.dumps(args,ensure_ascii=False)))
     def consume_approval(self,approval_id):
         with self.transaction() as c:
-            row=c.execute("SELECT id,task_id,tool,arguments_json FROM approvals WHERE id=? AND status='pending'",(approval_id,)).fetchone()
+            row=c.execute("SELECT id,task_id,tool,arguments_json FROM approvals WHERE id=? AND status='pending' AND created_at >= datetime('now','-10 minutes')",(approval_id,)).fetchone()
             if row is None:return None
             c.execute("UPDATE approvals SET status='approved',resolved_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",(approval_id,))
             return {"id":row["id"],"task_id":row["task_id"],"tool":row["tool"],"arguments":json.loads(row["arguments_json"])}

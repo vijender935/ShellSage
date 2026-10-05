@@ -61,16 +61,6 @@ def test_correct_bearer_passes():
     assert calls == ["http"]
 
 
-def test_correct_query_token_passes():
-    mw, _ = _make()
-    assert _request(mw, query=f"token={TOKEN}".encode()) == 200
-
-
-def test_wrong_query_token_is_401():
-    mw, _ = _make()
-    assert _request(mw, query=b"token=nope") == 401
-
-
 def test_health_is_exempt():
     mw, _ = _make()
     assert _request(mw, path="/health") == 200

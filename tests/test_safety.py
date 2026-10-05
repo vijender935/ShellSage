@@ -114,10 +114,9 @@ def test_dot_git_paths_blocked(ws):
     assert not evaluate_command("cat .git/config").allowed
 
 
-def test_unrestricted_mode(monkeypatch):
-    monkeypatch.setattr(safety, "SHELL_UNRESTRICTED", True)
+def test_shell_execution_cannot_be_unrestricted():
     d = evaluate_command("ls; echo hi | cat")
-    assert d.allowed and d.argv == ()  # empty argv => caller uses shell=True
+    assert not d.allowed
 
 
 def test_custom_allowlist(monkeypatch):

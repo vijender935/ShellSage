@@ -51,6 +51,9 @@ def test_child_env_scrubs_secrets(monkeypatch):
     assert "XAI_API_KEY" not in env
     assert "MY_PASSWORD" not in env
     assert env["KEEP_ME"] == "1" and env["EXTRA"] == "e"
+    assert env["PATH"] == "/usr/local/bin:/usr/bin:/bin"
+    assert env["PYTHONNOUSERSITE"] == "1"
+    assert "BAD_TOKEN" not in shell._child_env({"BAD_TOKEN": "x"})
 
 
 # ---- git tools -----------------------------------------------------------

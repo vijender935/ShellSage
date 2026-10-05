@@ -68,10 +68,11 @@ def test_symlink_to_outside_file_blocked(ws, tmp_path):
 
 
 @symlinks
-def test_symlink_inside_workspace_ok(ws):
+def test_symlink_inside_workspace_rejected(ws):
     (ws / "real").mkdir()
     (ws / "alias").symlink_to(ws / "real", target_is_directory=True)
-    assert safe_path("alias/f.txt") == ws / "real" / "f.txt"
+    with pytest.raises(PathEscapeError):
+        safe_path("alias/f.txt")
 
 
 def test_extra_root_allowed(ws, tmp_path, monkeypatch):

@@ -24,7 +24,7 @@ Agent/
 │   └── auth.py           # Bearer-token middleware
 ├── security/
 │   ├── confirmation.py   # Local-agent confirmation
-│   └── audit.py          # JSONL audit logging
+│   └── audit.py          # SQLite audit logging
 ├── agent/                # Optional local Grok agent
 │   ├── loop.py
 │   └── verify.py         # Edit -> test -> fix nudges

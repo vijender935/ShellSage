@@ -15,11 +15,7 @@ from pathlib import Path
 from typing import Mapping
 
 from config.settings import RISKY_COMMAND_PATTERNS
-from config.shell_policy import (
-    GIT_ALLOWED_SUBCOMMANDS,
-    SHELL_ALLOWLIST,
-    SHELL_UNRESTRICTED,
-)
+from config.shell_policy import GIT_ALLOWED_SUBCOMMANDS, SHELL_ALLOWLIST
 from core import workspace as _ws
 
 
@@ -34,7 +30,7 @@ def is_risky_command(command: str) -> bool:
 _SHELL_OPERATORS = frozenset(
     {"&&", "||", ";", "|", "&", ">", ">>", "<", "<<", "2>", "2>>", "2>&1", "&>"}
 )
-_FORBIDDEN_SUBSTRINGS = ("$(", "`", "${")
+_FORBIDDEN_SUBSTRINGS = ("$(", "${")
 
 # Per-command arguments that turn an innocent command into code execution / deletion.
 _DENIED_ARGS: dict[str, frozenset[str]] = {
@@ -107,9 +103,6 @@ def _escapes_workspace(arg: str) -> bool:
 
 
 def evaluate_command(command: str) -> CommandDecision:
-    if SHELL_UNRESTRICTED:
-        return CommandDecision(True, "unrestricted")
-
     cmd = (command or "").strip()
     if not cmd:
         return _deny("empty command")
@@ -121,7 +114,7 @@ def evaluate_command(command: str) -> CommandDecision:
         return _deny("empty command")
 
     for tok in tokens:
-        if tok in _SHELL_OPERATORS or any(s in tok for s in _FORBIDDEN_SUBSTRINGS):
+        if tok in _SHELL_OPERATORS or chr(96) in tok or any(s in tok for s in _FORBIDDEN_SUBSTRINGS):
             return _deny(
                 f"shell operators/substitution are not supported ({tok!r}); "
                 "run one simple command at a time"
