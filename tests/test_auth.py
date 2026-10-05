@@ -1,0 +1,100 @@
+import asyncio
+
+import pytest
+
+from mcp_local.auth import BearerAuthMiddleware
+
+TOKEN = "s3cret-token"
+
+
+def _make():
+    calls = []
+
+    async def inner(scope, receive, send):
+        calls.append(scope["type"])
+        if scope["type"] == "http":
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+    return BearerAuthMiddleware(inner, TOKEN), calls
+
+
+def _request(mw, path="/mcp", headers=None, query=b""):
+    sent = []
+
+    async def receive():
+        return {"type": "http.request"}
+
+    async def send(msg):
+        sent.append(msg)
+
+    scope = {
+        "type": "http",
+        "path": path,
+        "headers": headers or [],
+        "query_string": query,
+    }
+    asyncio.run(mw(scope, receive, send))
+    return sent[0]["status"]
+
+
+def test_no_credentials_is_401():
+    mw, calls = _make()
+    assert _request(mw) == 401
+    assert calls == []
+
+
+def test_wrong_bearer_is_401():
+    mw, calls = _make()
+    assert _request(mw, headers=[(b"authorization", b"Bearer nope")]) == 401
+    assert calls == []
+
+
+def test_wrong_scheme_is_401():
+    mw, _ = _make()
+    assert _request(mw, headers=[(b"authorization", f"Basic {TOKEN}".encode())]) == 401
+
+
+def test_correct_bearer_passes():
+    mw, calls = _make()
+    assert _request(mw, headers=[(b"authorization", f"Bearer {TOKEN}".encode())]) == 200
+    assert calls == ["http"]
+
+
+def test_health_is_exempt():
+    mw, _ = _make()
+    assert _request(mw, path="/health") == 200
+
+
+def test_rate_limit_blocks_after_threshold():
+    mw, calls = _make()
+    mw._rpm = 1
+    assert _request(mw, headers=[(b"authorization", f"Bearer {TOKEN}".encode())]) == 200
+    assert _request(mw, headers=[(b"authorization", f"Bearer {TOKEN}".encode())]) == 429
+
+
+def test_lifespan_passes_through():
+    mw, calls = _make()
+
+    async def noop(*_):
+        return None
+
+    asyncio.run(mw({"type": "lifespan"}, noop, noop))
+    assert calls == ["lifespan"]
+
+
+def test_oversized_request_is_413():
+    mw, calls = _make()
+    mw._max_body = 4
+    async def receive():
+        return {"type": "http.request", "body": b"12345", "more_body": False}
+    sent = []
+    async def send(msg): sent.append(msg)
+    scope = {"type":"http","path":"/mcp","headers":[(b"authorization", f"Bearer {TOKEN}".encode())],"client":("127.0.0.1",1234)}
+    asyncio.run(mw(scope, receive, send))
+    assert sent[0]["status"] == 413
+
+
+def test_empty_token_rejected_at_construction():
+    with pytest.raises(ValueError):
+        BearerAuthMiddleware(lambda *a: None, "")

@@ -1,0 +1,16 @@
+"""Remote approval policy for destructive or code-executing operations."""
+from __future__ import annotations
+import uuid
+from core.safety import is_risky_command
+from storage.runtime import db
+from mcp_local.auth import current_identity
+
+def approval_required(tool: str, args: dict) -> bool:
+    if tool in {"delete_path", "run_tests"}:
+        return True
+    return tool == "run_command" and is_risky_command(str(args.get("command", "")))
+
+def create_approval(task_id, tool, args):
+    approval_id = uuid.uuid4().hex
+    db.create_approval(approval_id, task_id, tool, args, identity=current_identity())
+    return approval_id

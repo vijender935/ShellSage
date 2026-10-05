@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from core.tools import filesystem, shell
+from core.tools import filesystem, git, shell, verify
 
 TOOL_MAP: dict[str, Callable[..., dict[str, Any]]] = {
     "list_files": filesystem.list_files,
@@ -18,6 +18,10 @@ TOOL_MAP: dict[str, Callable[..., dict[str, Any]]] = {
     "move_file": filesystem.move_file,
     "delete_path": filesystem.delete_path,
     "run_command": shell.run_command,
+    "run_tests": verify.run_tests,
+    "git_status": git.git_status,
+    "git_diff": git.git_diff,
+    "git_log": git.git_log,
 }
 
 TOOL_SCHEMAS: list[dict[str, Any]] = [
@@ -144,15 +148,16 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "function": {
             "name": "run_command",
             "description": (
-                "Execute a shell command inside the workspace. "
-                "Destructive / system-changing commands should be used only when necessary."
+                "Execute ONE simple command inside the workspace (no pipes, &&, ;, "
+                "redirects or $(...)). Only allowlisted commands are permitted "
+                "(e.g. ls, cat, grep, find, git, pytest, python script.py)."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "command": {
                         "type": "string",
-                        "description": "The full shell command to run",
+                        "description": "A single command with arguments",
                     },
                     "timeout": {
                         "type": "integer",
@@ -160,6 +165,78 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     },
                 },
                 "required": ["command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_tests",
+            "description": (
+                "Run the project's test suite (pytest) in the workspace. Returns pass/fail, "
+                "counts, the failing test ids and the tail of the output. Call this after "
+                "changing code to verify it."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Test file or folder (optional, default: whole suite)",
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "Only run tests matching this expression (pytest -k)",
+                    },
+                    "fail_fast": {
+                        "type": "boolean",
+                        "description": "Stop at the first failure",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_status",
+            "description": "Show git status (short format, with branch).",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_diff",
+            "description": "Show git diff of the working tree (or staged changes).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Limit the diff to this file/folder (optional)",
+                    },
+                    "staged": {
+                        "type": "boolean",
+                        "description": "Show staged changes instead of unstaged",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_log",
+            "description": "Show recent commits, one per line.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "count": {
+                        "type": "integer",
+                        "description": "How many commits (default 10, max 100)",
+                    }
+                },
             },
         },
     },

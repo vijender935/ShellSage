@@ -1,57 +1,18 @@
-"""
-Simple JSONL audit log for every tool call.
-"""
-
+"""SQLite-backed audit logging with secret-safe redaction."""
 from __future__ import annotations
-
-import json
-import time
-from pathlib import Path
 from typing import Any
-
-from config.settings import AUDIT_LOG_PATH, WORKSPACE
-
-
-def log_tool_call(
-    tool: str,
-    args: dict[str, Any],
-    result: dict[str, Any],
-    *,
-    source: str = "unknown",
-    duration_ms: float | None = None,
-) -> None:
-    if not AUDIT_LOG_PATH:
-        return
-
-    entry = {
-        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "source": source,
-        "tool": tool,
-        "args": _safe_args(args),
-        "success": result.get("success"),
-        "error": result.get("error"),
-        "duration_ms": duration_ms,
-    }
-
-    path = Path(AUDIT_LOG_PATH)
-    if not path.is_absolute():
-        path = WORKSPACE / path
-
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except Exception:
-        # Never crash the agent because of logging
-        pass
-
-
-def _safe_args(args: dict[str, Any]) -> dict[str, Any]:
-    """Truncate large content fields so the log stays small."""
-    out = {}
-    for k, v in args.items():
-        if k in ("content",) and isinstance(v, str) and len(v) > 200:
-            out[k] = v[:200] + f"... ({len(v)} chars)"
-        else:
-            out[k] = v
-    return out
+from storage.runtime import db
+_SECRET_NAMES=("TOKEN","SECRET","API_KEY","APIKEY","PASSWORD","PASSWD","CREDENTIAL","AUTHORIZATION")
+def _redact(value:Any)->Any:
+    if isinstance(value,dict):
+        return {k:("[REDACTED]" if any(m in str(k).upper() for m in _SECRET_NAMES) else _redact(v)) for k,v in value.items()}
+    if isinstance(value,list):return [_redact(v) for v in value]
+    if isinstance(value,str):
+        s=value.lower()
+        if any(m in s for m in ("authorization:","bearer ","xai_api_key=","token=")):return "[REDACTED]"
+        return value if len(value)<=1000 else value[:1000]+"…"
+    return value
+def log_tool_call(tool:str,args:dict[str,Any],result:dict[str,Any],*,source:str="unknown",duration_ms:float|None=None,session_id:str|None=None,task_id:str|None=None)->None:
+    safe_args=_redact(args); safe_result=_redact(result)
+    db.record_audit(source,tool,safe_args,safe_result,duration_ms,session_id=session_id,task_id=task_id)
+    if task_id or session_id:db.record_tool_call(task_id,session_id,tool,safe_args,safe_result,duration_ms)
