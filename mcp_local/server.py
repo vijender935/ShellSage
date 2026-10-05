@@ -53,15 +53,14 @@ def run_command(command:str,timeout:int=30)->dict[str,Any]:return _run("run_comm
 def run_tests(path:str="",keyword:str="",fail_fast:bool=False)->dict[str,Any]:return _run("run_tests",{"path":path,"keyword":keyword,"fail_fast":fail_fast})
 @mcp.tool()
 def approve_action(approval_id:str)->dict[str,Any]:
-    pending=db.consume_approval(approval_id)
+    pending=db.consume_approval(approval_id,current_identity())
     if not pending:return {"success":False,"error":"Approval not found, already resolved, or expired."}
-    if pending.get("identity") != current_identity(): return {"success":False,"error":"Approval belongs to a different authenticated client."}
-    started=time.perf_counter();result=execute_tool(pending["tool"],pending["arguments"]);duration=(time.perf_counter()-started)*1000
+        started=time.perf_counter();result=execute_tool(pending["tool"],pending["arguments"]);duration=(time.perf_counter()-started)*1000
     log_tool_call(pending["tool"],pending["arguments"],result,source="mcp_approved",duration_ms=round(duration,1))
     return {"success":bool(result.get("success")),"approval_id":approval_id,"tool":pending["tool"],"result":result}
 @mcp.tool()
 def reject_action(approval_id:str)->dict[str,Any]:
-    return {"success":db.reject_approval(approval_id),"approval_id":approval_id}
+    return {"success":db.reject_approval(approval_id,current_identity()),"approval_id":approval_id}
 @mcp.tool()
 def git_status()->dict[str,Any]:return _run("git_status",{})
 @mcp.tool()

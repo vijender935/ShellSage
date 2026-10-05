@@ -47,11 +47,11 @@ class Database:
     def finish_task(self,task_id,status):self._conn().execute("UPDATE tasks SET status=?,updated_at=CURRENT_TIMESTAMP,finished_at=CURRENT_TIMESTAMP WHERE id=?",(status,task_id))
     def record_tool_call(self,task_id,session_id,tool,args,result,duration_ms):self._conn().execute("INSERT INTO tool_calls(task_id,session_id,tool,arguments_json,result_json,success,duration_ms) VALUES(?,?,?,?,?,?,?)",(task_id,session_id,tool,json.dumps(args,ensure_ascii=False),json.dumps(result,ensure_ascii=False),int(bool(result.get("success"))),duration_ms))
     def record_audit(self,source,tool,args,result,duration_ms,session_id=None,task_id=None):self._conn().execute("INSERT INTO audit_events(session_id,task_id,source,tool,arguments_json,result_json,success,duration_ms) VALUES(?,?,?,?,?,?,?,?)",(session_id,task_id,tool,json.dumps(args,ensure_ascii=False),json.dumps(result,ensure_ascii=False),int(bool(result.get("success"))),duration_ms))
-    def create_approval(self,approval_id,task_id,tool,args):self._conn().execute("INSERT INTO approvals(id,task_id,tool,arguments_json) VALUES(?,?,?,?)",(approval_id,task_id,tool,json.dumps(args,ensure_ascii=False)))
-    def consume_approval(self,approval_id):
+    def create_approval(self,approval_id,task_id,tool,args,identity=None):self._conn().execute("INSERT INTO approvals(id,task_id,tool,arguments_json,identity) VALUES(?,?,?,?,?)",(approval_id,task_id,tool,json.dumps(args,ensure_ascii=False),identity))
+    def consume_approval(self,approval_id,identity=None):
         with self.transaction() as c:
-            row=c.execute("SELECT id,task_id,tool,arguments_json FROM approvals WHERE id=? AND status='pending' AND created_at >= datetime('now','-10 minutes')",(approval_id,)).fetchone()
+            row=c.execute("SELECT id,task_id,tool,arguments_json,identity FROM approvals WHERE id=? AND status='pending' AND created_at >= datetime('now','-10 minutes') AND (identity IS NULL OR identity=?)",(approval_id,identity)).fetchone()
             if row is None:return None
             c.execute("UPDATE approvals SET status='approved',resolved_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",(approval_id,))
-            return {"id":row["id"],"task_id":row["task_id"],"tool":row["tool"],"arguments":json.loads(row["arguments_json"])}
-    def reject_approval(self,approval_id):return self._conn().execute("UPDATE approvals SET status='rejected',resolved_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",(approval_id,)).rowcount==1
+            return {"id":row["id"],"task_id":row["task_id"],"tool":row["tool"],"arguments":json.loads(row["arguments_json"]),"identity":row["identity"]}
+    def reject_approval(self,approval_id,identity=None):return self._conn().execute("UPDATE approvals SET status='rejected',resolved_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending' AND (identity IS NULL OR identity=?)",(approval_id,identity)).rowcount==1

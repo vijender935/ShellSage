@@ -44,8 +44,9 @@ def test_sibling_with_same_prefix_blocked(ws):
         safe_path(evil)
 
 
-def test_null_byte_stripped(ws):
-    assert safe_path("a\x00.txt").parent == ws
+def test_null_byte_rejected(ws):
+    with pytest.raises(PathEscapeError):
+        safe_path("a\x00.txt")
 
 
 @symlinks

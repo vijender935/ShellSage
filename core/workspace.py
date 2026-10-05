@@ -44,7 +44,9 @@ def _reject_symlink_components(candidate: Path, root: Path) -> None:
 def safe_path(path: str | Path | None = ".") -> Path:
     if path is None or str(path).strip() == "":
         path = "."
-    raw = str(path).replace("\x00", "")
+    raw = str(path)
+    if "\x00" in raw:
+        raise PathEscapeError("Access denied: NUL bytes are not valid in paths")
     p = Path(raw)
     lexical = p.absolute() if p.is_absolute() else (WORKSPACE / p)
     roots = ALLOWED_ROOTS if p.is_absolute() else (WORKSPACE,)

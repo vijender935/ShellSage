@@ -42,13 +42,6 @@ class BearerAuthMiddleware:
     def _authorized(self,scope)->bool:
         return hmac.compare_digest(self._presented_token(scope),self._token)
 
-    def _client_key(self,scope)->str:
-        for key,value in scope.get("headers",[]):
-            if key.lower()==b"x-forwarded-for":
-                return value.decode("latin1").split(",",1)[0].strip() or "unknown"
-        client=scope.get("client")
-        return str(client[0]) if client else "unknown"
-
     def _rate_allowed(self,key:str)->bool:
         now=time.monotonic()
         q=self._hits[key]
@@ -81,7 +74,7 @@ class BearerAuthMiddleware:
             if not self._authorized(scope):
                 await send({"type":"http.response.start","status":401,"headers":[(b"content-type",b"application/json"),(b"www-authenticate",b"Bearer")]})
                 await send({"type":"http.response.body","body":_UNAUTHORIZED_BODY}); return
-            if not self._rate_allowed(self._client_key(scope)):
+            if not self._rate_allowed(self._identity):
                 await send({"type":"http.response.start","status":429,"headers":[(b"content-type",b"application/json"),(b"retry-after",b"60")]})
                 await send({"type":"http.response.body","body":_RATE_BODY}); return
             token=_auth_identity.set(self._identity)
