@@ -64,12 +64,11 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 Clients authenticate with either:
 
-- Header: `Authorization: Bearer <token>`
-- URL (for MCP clients that only accept a URL): `https://YOUR-SERVICE.onrender.com/mcp?token=<token>`
+- Header only: `Authorization: Bearer <token>`
 
-Requests without a valid token get `401`. Access logging is disabled so the `?token=` value is not written to logs.
+Requests without a valid token get `401`. Query-string tokens are rejected so credentials do not leak through URLs, proxies, or referrers.
 
-## Available MCP tools
+HTTP hardening defaults: request bodies are limited to 1 MiB and each client is limited to 60 requests/minute. Override with `MAX_HTTP_BODY_BYTES` and `HTTP_REQUESTS_PER_MINUTE`. Risk approvals are bound to the authenticated client and expire after 10 minutes. DNS rebinding protection is enabled.
 
 | Tool | Description | Default |
 |---|---|---|

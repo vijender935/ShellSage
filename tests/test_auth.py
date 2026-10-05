@@ -66,6 +66,13 @@ def test_health_is_exempt():
     assert _request(mw, path="/health") == 200
 
 
+def test_rate_limit_blocks_after_threshold():
+    mw, calls = _make()
+    mw._rpm = 1
+    assert _request(mw, headers=[(b"authorization", f"Bearer {TOKEN}".encode())]) == 200
+    assert _request(mw, headers=[(b"authorization", f"Bearer {TOKEN}".encode())]) == 429
+
+
 def test_lifespan_passes_through():
     mw, calls = _make()
 
@@ -74,6 +81,18 @@ def test_lifespan_passes_through():
 
     asyncio.run(mw({"type": "lifespan"}, noop, noop))
     assert calls == ["lifespan"]
+
+
+def test_oversized_request_is_413():
+    mw, calls = _make()
+    mw._max_body = 4
+    async def receive():
+        return {"type": "http.request", "body": b"12345", "more_body": False}
+    sent = []
+    async def send(msg): sent.append(msg)
+    scope = {"type":"http","path":"/mcp","headers":[(b"authorization", f"Bearer {TOKEN}".encode())],"client":("127.0.0.1",1234)}
+    asyncio.run(mw(scope, receive, send))
+    assert sent[0]["status"] == 413
 
 
 def test_empty_token_rejected_at_construction():

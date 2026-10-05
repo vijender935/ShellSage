@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from core.safety import is_risky_command
 from storage.runtime import db
+from mcp_local.auth import current_identity
 
 def approval_required(tool: str, args: dict) -> bool:
     if tool in {"delete_path", "run_tests"}:
@@ -11,5 +12,5 @@ def approval_required(tool: str, args: dict) -> bool:
 
 def create_approval(task_id, tool, args):
     approval_id = uuid.uuid4().hex
-    db.create_approval(approval_id, task_id, tool, args)
+    db.create_approval(approval_id, task_id, tool, args, identity=current_identity())
     return approval_id

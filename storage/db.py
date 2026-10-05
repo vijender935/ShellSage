@@ -22,7 +22,10 @@ class Database:
         if c is None:
             c=sqlite3.connect(self.path,timeout=30,isolation_level=None);c.row_factory=sqlite3.Row;c.execute("PRAGMA foreign_keys=ON");c.execute("PRAGMA busy_timeout=30000");self._local.conn=c
         return c
-    def initialize(self):self._conn().executescript(SCHEMA)
+    def initialize(self):
+        c=self._conn();c.executescript(SCHEMA)
+        cols={row["name"] for row in c.execute("PRAGMA table_info(approvals)")}
+        if "identity" not in cols:c.execute("ALTER TABLE approvals ADD COLUMN identity TEXT")
     @contextmanager
     def transaction(self)->Iterator[sqlite3.Connection]:
         c=self._conn();c.execute("BEGIN IMMEDIATE")
