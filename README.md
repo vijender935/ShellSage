@@ -99,7 +99,7 @@ Clipboard/Android/Termux integrations have been removed from the cloud version.
 - Path-like arguments must stay inside the workspace (no `/etc/passwd`, `../x`, `~`, symlink escapes).
 - Secrets (anything with `TOKEN`, `SECRET`, `API_KEY`, `PASSWORD`… in its name) are removed from the child process environment.
 
-**Important:** `python` and `pytest` can execute arbitrary code. Remove them from `SHELL_ALLOWLIST` if you do not want that (`run_tests` then stops working). `SHELL_UNRESTRICTED=1` restores the old `shell=True` behaviour (not recommended).
+**Important:** `python` and `pytest` can execute arbitrary code. Remove them from `SHELL_ALLOWLIST` if you do not want that (`run_tests` then stops working). There is no unrestricted `shell=True` mode.
 
 ## Verification loop (edit → test → fix)
 
@@ -111,7 +111,7 @@ Clipboard/Android/Termux integrations have been removed from the cloud version.
 
 - **Authentication:** Bearer token required in HTTP mode.
 - **Least privilege:** shell, test-runner and delete tools are not exposed unless explicitly enabled.
-- **Path sandbox:** every file operation goes through `safe_path()`, which resolves symlinks, blocks `..` / absolute-path escapes, and refuses anything inside `.git` (a writable `.git/config` or hooks dir would allow code execution through git).
+- **Path sandbox:** every file operation goes through `safe_path()`, which rejects symlink components and NUL bytes, blocks path escapes, and refuses anything inside `.git` (a writable `.git/config` or hooks dir would allow code execution through git).
 - **Audit log:** JSONL audit logging remains enabled by default.
 
 ## Workspace
@@ -128,7 +128,7 @@ Additional allowed roots can be supplied through `AGENT_EXTRA_ROOTS` using the p
 
 ## Optional local Grok agent
 
-The `agent/` package remains available for running the xAI/Grok multi-step loop separately. The Render MCP service itself does not require an xAI API key. Note: the local agent uses the same shell policy; set `SHELL_UNRESTRICTED=1` if you need pipes/redirects there.
+The `agent/` package remains available for running the xAI/Grok multi-step loop separately. The Render MCP service itself does not require an xAI API key. Note: the local agent uses the same shell policy; The local agent also uses the restricted `shell=False` policy.
 
 ## Local development
 
