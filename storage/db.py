@@ -16,35 +16,39 @@ CREATE TABLE IF NOT EXISTS audit_events(id INTEGER PRIMARY KEY AUTOINCREMENT,ses
 """
 class Database:
     def __init__(self,path:str|Path):
-        self.path=Path(path); self.path.parent.mkdir(parents=True,exist_ok=True); self._local=threading.local(); self.initialize()
-    def _conn(self)->sqlite3.Connection:
+        self.path=Path(path);self.path.parent.mkdir(parents=True,exist_ok=True);self._local=threading.local();self.initialize()
+    def _conn(self):
         c=getattr(self._local,"conn",None)
         if c is None:
-            c=sqlite3.connect(self.path,timeout=30,isolation_level=None); c.row_factory=sqlite3.Row; c.execute("PRAGMA foreign_keys=ON"); c.execute("PRAGMA busy_timeout=30000"); self._local.conn=c
+            c=sqlite3.connect(self.path,timeout=30,isolation_level=None);c.row_factory=sqlite3.Row;c.execute("PRAGMA foreign_keys=ON");c.execute("PRAGMA busy_timeout=30000");self._local.conn=c
         return c
-    def initialize(self)->None:self._conn().executescript(SCHEMA)
+    def initialize(self):self._conn().executescript(SCHEMA)
     @contextmanager
     def transaction(self)->Iterator[sqlite3.Connection]:
-        c=self._conn(); c.execute("BEGIN IMMEDIATE")
+        c=self._conn();c.execute("BEGIN IMMEDIATE")
         try:yield c
         except Exception:c.execute("ROLLBACK");raise
         else:c.execute("COMMIT")
-    def create_session(self,session_id:str,title:str="")->None:self._conn().execute("INSERT OR IGNORE INTO sessions(id,title) VALUES(?,?)",(session_id,title))
-    def add_message(self,session_id:str,role:str,content:str)->None:
-        self._conn().execute("INSERT INTO messages(session_id,role,content) VALUES(?,?,?)",(session_id,role,content));self._conn().execute("UPDATE sessions SET updated_at=CURRENT_TIMESTAMP WHERE id=?",(session_id,))
-    def load_messages(self,session_id:str)->list[dict[str,Any]]:
-        return [dict(r) for r in self._conn().execute("SELECT role,content FROM messages WHERE session_id=? ORDER BY id",(session_id,)).fetchall()]
-    def create_task(self,task_id:str,session_id:str,goal:str)->None:self._conn().execute("INSERT INTO tasks(id,session_id,goal) VALUES(?,?,?)",(task_id,session_id,goal))
-    def finish_task(self,task_id:str,status:str)->None:self._conn().execute("UPDATE tasks SET status=?,updated_at=CURRENT_TIMESTAMP,finished_at=CURRENT_TIMESTAMP WHERE id=?",(status,task_id))
-    def record_tool_call(self,task_id,session_id,tool,args,result,duration_ms)->None:self._conn().execute("INSERT INTO tool_calls(task_id,session_id,tool,arguments_json,result_json,success,duration_ms) VALUES(?,?,?,?,?,?,?)",(task_id,session_id,tool,json.dumps(args,ensure_ascii=False),json.dumps(result,ensure_ascii=False),int(bool(result.get("success"))),duration_ms))
-    def record_audit(self,source,tool,args,result,duration_ms,session_id=None,task_id=None)->None:self._conn().execute("INSERT INTO audit_events(session_id,task_id,source,tool,arguments_json,result_json,success,duration_ms) VALUES(?,?,?,?,?,?,?,?)",(session_id,task_id,source,tool,json.dumps(args,ensure_ascii=False),json.dumps(result,ensure_ascii=False),int(bool(result.get("success"))),duration_ms))
-    def create_approval(self,approval_id,task_id,tool,args)->None:self._conn().execute("INSERT INTO approvals(id,task_id,tool,arguments_json) VALUES(?,?,?,?)",(approval_id,task_id,tool,json.dumps(args,ensure_ascii=False)))
-    def consume_approval(self,approval_id:str)->dict[str,Any]|None:
+    def create_session(self,session_id,title=""):self._conn().execute("INSERT OR IGNORE INTO sessions(id,title) VALUES(?,?)",(session_id,title))
+    def save_message(self,session_id:str,message:dict[str,Any]):
+        self._conn().execute("INSERT INTO messages(session_id,role,content) VALUES(?,?,?)",(session_id,message.get("role","unknown"),json.dumps(message,ensure_ascii=False)))
+        self._conn().execute("UPDATE sessions SET updated_at=CURRENT_TIMESTAMP WHERE id=?",(session_id,))
+    def load_history(self,session_id:str)->list[dict[str,Any]]:
+        rows=self._conn().execute("SELECT content FROM messages WHERE session_id=? ORDER BY id",(session_id,)).fetchall()
+        out=[]
+        for row in rows:
+            try:out.append(json.loads(row["content"]))
+            except (TypeError,json.JSONDecodeError):out.append({"role":"user","content":row["content"]})
+        return out
+    def create_task(self,task_id,session_id,goal):self._conn().execute("INSERT INTO tasks(id,session_id,goal) VALUES(?,?,?)",(task_id,session_id,goal))
+    def finish_task(self,task_id,status):self._conn().execute("UPDATE tasks SET status=?,updated_at=CURRENT_TIMESTAMP,finished_at=CURRENT_TIMESTAMP WHERE id=?",(status,task_id))
+    def record_tool_call(self,task_id,session_id,tool,args,result,duration_ms):self._conn().execute("INSERT INTO tool_calls(task_id,session_id,tool,arguments_json,result_json,success,duration_ms) VALUES(?,?,?,?,?,?,?)",(task_id,session_id,tool,json.dumps(args,ensure_ascii=False),json.dumps(result,ensure_ascii=False),int(bool(result.get("success"))),duration_ms))
+    def record_audit(self,source,tool,args,result,duration_ms,session_id=None,task_id=None):self._conn().execute("INSERT INTO audit_events(session_id,task_id,source,tool,arguments_json,result_json,success,duration_ms) VALUES(?,?,?,?,?,?,?,?)",(session_id,task_id,tool,json.dumps(args,ensure_ascii=False),json.dumps(result,ensure_ascii=False),int(bool(result.get("success"))),duration_ms))
+    def create_approval(self,approval_id,task_id,tool,args):self._conn().execute("INSERT INTO approvals(id,task_id,tool,arguments_json) VALUES(?,?,?,?)",(approval_id,task_id,tool,json.dumps(args,ensure_ascii=False)))
+    def consume_approval(self,approval_id):
         with self.transaction() as c:
             row=c.execute("SELECT id,task_id,tool,arguments_json FROM approvals WHERE id=? AND status='pending'",(approval_id,)).fetchone()
             if row is None:return None
             c.execute("UPDATE approvals SET status='approved',resolved_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",(approval_id,))
             return {"id":row["id"],"task_id":row["task_id"],"tool":row["tool"],"arguments":json.loads(row["arguments_json"])}
-    def reject_approval(self,approval_id:str)->bool:
-        cur=self._conn().execute("UPDATE approvals SET status='rejected',resolved_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",(approval_id,))
-        return cur.rowcount==1
+    def reject_approval(self,approval_id):return self._conn().execute("UPDATE approvals SET status='rejected',resolved_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",(approval_id,)).rowcount==1
