@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 import subprocess
 from typing import Any, Mapping
-from config.settings import COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_MAX, MAX_COMMAND_OUTPUT, WORKSPACE
+from config.settings import (COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_MAX, COMMAND_CPU_SECONDS, COMMAND_MAX_FILE_BYTES, COMMAND_MAX_OPEN_FILES, MAX_COMMAND_OUTPUT, WORKSPACE)
 from core.safety import evaluate_command, is_risky_command
 
 _SECRET_MARKERS = ("TOKEN", "SECRET", "API_KEY", "APIKEY", "PASSWORD", "PASSWD", "CREDENTIAL", "AUTHORIZATION")

@@ -2,7 +2,10 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    AGENT_WORKSPACE=/app/workspace
+    AGENT_WORKSPACE=/app/workspace \
+    COMMAND_CPU_SECONDS=60 \
+    COMMAND_MAX_FILE_BYTES=16777216 \
+    COMMAND_MAX_OPEN_FILES=256
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
